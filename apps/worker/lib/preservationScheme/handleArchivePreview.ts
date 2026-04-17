@@ -14,6 +14,15 @@ type LinksAndCollectionAndOwner = Link & {
   };
 };
 
+function extractTweetId(url: string): string | null {
+  try {
+    const match = url.match(/\/status\/(\d+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 function isTwitterUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   try {
@@ -24,24 +33,21 @@ function isTwitterUrl(url: string | null | undefined): boolean {
   }
 }
 
-async function dismissTwitterModal(page: Page): Promise<void> {
+// Screenshot the tweet embed (platform.twitter.com/embed) to bypass X.com bot detection.
+async function screenshotTweetEmbed(
+  page: Page,
+  tweetId: string
+): Promise<Buffer | null> {
   try {
-    await page.waitForSelector('[data-testid="tweet"]', { timeout: 8000 });
+    const embedUrl = `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&lang=en`;
+    await page.setViewportSize({ width: 600, height: 800 });
+    await page.goto(embedUrl, { waitUntil: "networkidle", timeout: 20000 });
+    await page.waitForSelector("article, .EmbeddedTweet, [data-scribe]", {
+      timeout: 10000,
+    });
+    return await page.screenshot({ type: "jpeg", quality: 20 });
   } catch {
-    // tweet element not found, proceed anyway
-  }
-
-  // dismiss login/signup modal if visible
-  try {
-    const overlay = page.locator(
-      '[data-testid="sheetDialog"], [aria-label="Sign in"], [aria-label="Sign up"]'
-    );
-    if (await overlay.first().isVisible({ timeout: 2000 })) {
-      await page.keyboard.press("Escape");
-      await page.waitForTimeout(300);
-    }
-  } catch {
-    // no modal, continue
+    return null;
   }
 }
 
@@ -57,10 +63,10 @@ const handleArchivePreview = async (
   let previewGenerated = false;
 
   // Skip og:image for Twitter/X — it resolves to the X logo for text-only tweets.
-  // Fall through to the screenshot path instead.
-  const skipOgImage = isTwitterUrl(link.url);
+  // Use the public tweet embed instead, which renders tweet content without auth.
+  const twitterUrl = isTwitterUrl(link.url);
 
-  if (!skipOgImage && ogImageUrl) {
+  if (!twitterUrl && ogImageUrl) {
     if (
       !ogImageUrl.startsWith("http://") &&
       !ogImageUrl.startsWith("https://")
@@ -92,31 +98,39 @@ const handleArchivePreview = async (
   }
 
   if (!previewGenerated && !link.preview?.startsWith("archive")) {
-    if (skipOgImage) {
-      await dismissTwitterModal(page);
+    let screenshot: Buffer | undefined;
+
+    if (twitterUrl && link.url) {
+      const tweetId = extractTweetId(link.url);
+      if (tweetId) {
+        const embedShot = await screenshotTweetEmbed(page, tweetId);
+        if (embedShot) screenshot = embedShot;
+      }
     }
 
-    await page
-      .screenshot({ type: "jpeg", quality: 20 })
-      .then(async (screenshot) => {
-        if (
-          Buffer.byteLength(screenshot) >
-          1024 * 1024 * Number(process.env.PREVIEW_MAX_BUFFER || 10)
-        )
-          return console.log("Error generating preview: Buffer size exceeded");
+    if (!screenshot) {
+      screenshot = await page.screenshot({ type: "jpeg", quality: 20 });
+    }
 
-        await createFile({
-          data: screenshot,
-          filePath: `archives/preview/${link.collectionId}/${link.id}.jpeg`,
-        });
+    if (
+      Buffer.byteLength(screenshot) >
+      1024 * 1024 * Number(process.env.PREVIEW_MAX_BUFFER || 10)
+    ) {
+      console.log("Error generating preview: Buffer size exceeded");
+      return;
+    }
 
-        await prisma.link.update({
-          where: { id: link.id },
-          data: {
-            preview: `archives/preview/${link.collectionId}/${link.id}.jpeg`,
-          },
-        });
-      });
+    await createFile({
+      data: screenshot,
+      filePath: `archives/preview/${link.collectionId}/${link.id}.jpeg`,
+    });
+
+    await prisma.link.update({
+      where: { id: link.id },
+      data: {
+        preview: `archives/preview/${link.collectionId}/${link.id}.jpeg`,
+      },
+    });
   }
 };
 
