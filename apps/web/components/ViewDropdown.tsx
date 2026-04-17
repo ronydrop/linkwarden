@@ -47,6 +47,7 @@ export default function ViewDropdown({
   const visibleShows = (
     Object.keys(settings.show) as (keyof typeof settings.show)[]
   ).filter((key) => {
+    if (settings.viewMode === ViewMode.Timeline) return false;
     if (!dashboard && settings.viewMode === ViewMode.List)
       return key !== "tags" && key !== "image" && key !== "description";
     if (dashboard || settings.viewMode === ViewMode.Card)
@@ -62,6 +63,8 @@ export default function ViewDropdown({
             <i className="bi-grid text-neutral"></i>
           ) : viewMode === ViewMode.Masonry ? (
             <i className="bi-columns-gap text-neutral"></i>
+          ) : viewMode === ViewMode.Timeline ? (
+            <i className="bi-twitter-x text-neutral"></i>
           ) : (
             <i className="bi-view-stacked text-neutral"></i>
           )}
@@ -74,7 +77,7 @@ export default function ViewDropdown({
             <div className="px-1">
               <p className="text-xs font-bold text-neutral mb-1">{t("view")}</p>
               <div className="flex gap-1 border-border">
-                {[ViewMode.Card, ViewMode.Masonry, ViewMode.List].map(
+                {[ViewMode.Card, ViewMode.Masonry, ViewMode.List, ViewMode.Timeline].map(
                   (mode) => {
                     const Icon =
                       mode === ViewMode.Card
@@ -83,9 +86,13 @@ export default function ViewDropdown({
                           ? () => (
                               <i className="bi-columns-gap w-4 h-4 text-neutral" />
                             )
-                          : () => (
-                              <i className="bi-view-stacked w-4 h-4 text-neutral" />
-                            );
+                          : mode === ViewMode.Timeline
+                            ? () => (
+                                <i className="bi-twitter-x w-4 h-4 text-neutral" />
+                              )
+                            : () => (
+                                <i className="bi-view-stacked w-4 h-4 text-neutral" />
+                              );
 
                     return (
                       <Button
@@ -126,7 +133,7 @@ export default function ViewDropdown({
           </DropdownMenuCheckboxItem>
         ))}
 
-        {!dashboard && settings.viewMode !== ViewMode.List && (
+        {!dashboard && settings.viewMode !== ViewMode.List && settings.viewMode !== ViewMode.Timeline && (
           <>
             <DropdownMenuSeparator />
 

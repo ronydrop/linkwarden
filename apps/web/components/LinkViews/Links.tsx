@@ -10,6 +10,7 @@ import LinkMasonry from "@/components/LinkViews/LinkComponents/LinkMasonry";
 import Masonry from "react-masonry-css";
 import { useMemo } from "react";
 import LinkList from "@/components/LinkViews/LinkComponents/LinkList";
+import LinkTimeline from "@/components/LinkViews/LinkComponents/LinkTimeline";
 import useLocalSettingsStore from "@/store/localSettings";
 import { useCollections } from "@linkwarden/router/collections";
 import { useRouter } from "next/router";
@@ -355,6 +356,47 @@ function ListView({
   );
 }
 
+function TimelineView({
+  links,
+  t,
+  isLoading,
+  hasNextPage,
+  placeHolderRef,
+}: {
+  links: LinkIncludingShortenedCollectionAndTags[];
+  t: TFunction<"translation", undefined>;
+  isLoading: boolean;
+  hasNextPage: boolean;
+  placeHolderRef: any;
+}) {
+  const tweetLinks = links.filter(
+    (e) => e.url && /(?:twitter\.com|x\.com)\//i.test(e.url)
+  );
+
+  return (
+    <div className="flex flex-col gap-3 max-w-xl mx-auto w-full pb-3">
+      {tweetLinks.length === 0 && !isLoading && (
+        <p className="text-neutral text-sm text-center py-8">
+          Nenhum tweet salvo. Salve links do X / Twitter para ver aqui.
+        </p>
+      )}
+      {tweetLinks.map((e) => (
+        <LinkTimeline key={e.id} link={e} t={t} />
+      ))}
+      {(hasNextPage || isLoading) && (
+        <div ref={placeHolderRef} className="flex gap-3 p-4 border border-neutral-content rounded-2xl bg-base-200">
+          <div className="skeleton h-10 w-10 rounded-full shrink-0" />
+          <div className="flex flex-col gap-2 w-full">
+            <div className="skeleton h-3 w-1/3" />
+            <div className="skeleton h-3 w-full" />
+            <div className="skeleton h-3 w-4/5" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Links({
   layout,
   links,
@@ -457,6 +499,16 @@ export default function Links({
         toggleSelected={toggleSelected}
         isSelected={isSelected}
         editMode={editMode || false}
+        isLoading={useData?.isLoading}
+        hasNextPage={useData?.hasNextPage}
+        placeHolderRef={ref}
+      />
+    );
+  } else if (layout === ViewMode.Timeline) {
+    return (
+      <TimelineView
+        links={links || []}
+        t={t}
         isLoading={useData?.isLoading}
         hasNextPage={useData?.hasNextPage}
         placeHolderRef={ref}
