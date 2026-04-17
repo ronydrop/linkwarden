@@ -14,6 +14,37 @@ type LinksAndCollectionAndOwner = Link & {
   };
 };
 
+function isTwitterUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    return hostname === "x.com" || hostname === "twitter.com";
+  } catch {
+    return false;
+  }
+}
+
+async function dismissTwitterModal(page: Page): Promise<void> {
+  try {
+    await page.waitForSelector('[data-testid="tweet"]', { timeout: 8000 });
+  } catch {
+    // tweet element not found, proceed anyway
+  }
+
+  // dismiss login/signup modal if visible
+  try {
+    const overlay = page.locator(
+      '[data-testid="sheetDialog"], [aria-label="Sign in"], [aria-label="Sign up"]'
+    );
+    if (await overlay.first().isVisible({ timeout: 2000 })) {
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+    }
+  } catch {
+    // no modal, continue
+  }
+}
+
 const handleArchivePreview = async (
   link: LinksAndCollectionAndOwner,
   page: Page
@@ -25,7 +56,11 @@ const handleArchivePreview = async (
 
   let previewGenerated = false;
 
-  if (ogImageUrl) {
+  // Skip og:image for Twitter/X — it resolves to the X logo for text-only tweets.
+  // Fall through to the screenshot path instead.
+  const skipOgImage = isTwitterUrl(link.url);
+
+  if (!skipOgImage && ogImageUrl) {
     if (
       !ogImageUrl.startsWith("http://") &&
       !ogImageUrl.startsWith("https://")
@@ -57,6 +92,10 @@ const handleArchivePreview = async (
   }
 
   if (!previewGenerated && !link.preview?.startsWith("archive")) {
+    if (skipOgImage) {
+      await dismissTwitterModal(page);
+    }
+
     await page
       .screenshot({ type: "jpeg", quality: 20 })
       .then(async (screenshot) => {
